@@ -14,7 +14,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# 한글 폰트 (Streamlit)
+# ---------------------------
+# 한글 폰트 (깨짐 방지)
+# ---------------------------
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR&display=swap');
@@ -25,7 +27,7 @@ html, body, [class*="css"] {
 """, unsafe_allow_html=True)
 
 # ---------------------------
-# 유틸 함수: NFC/NFD 안전 파일 찾기
+# NFC / NFD 안전 파일 탐색
 # ---------------------------
 def find_file_safe(directory: Path, target_name: str):
     target_nfc = unicodedata.normalize("NFC", target_name)
@@ -39,7 +41,7 @@ def find_file_safe(directory: Path, target_name: str):
     return None
 
 # ---------------------------
-# 데이터 로딩
+# 환경 데이터 로딩
 # ---------------------------
 @st.cache_data
 def load_environment_data():
@@ -48,25 +50,30 @@ def load_environment_data():
     env_data = {}
 
     for school in schools:
-        filename = f"{school}_환경데이터.csv"
+        filename = f"{school}_환경데이터.csv.csv"
         file_path = find_file_safe(data_dir, filename)
+
         if file_path is None:
-            st.error(f"환경 데이터 파일을 찾을 수 없습니다: {filename}")
+            st.error(f"❌ 환경 데이터 파일을 찾을 수 없습니다: {filename}")
             return None
+
         df = pd.read_csv(file_path)
         df["학교"] = school
         env_data[school] = df
 
     return env_data
 
+# ---------------------------
+# 생육 데이터 로딩 (시트 자동 인식)
+# ---------------------------
 @st.cache_data
 def load_growth_data():
     data_dir = Path("data")
-    filename = "4개교_생육결과데이터.xlsx"
+    filename = "4개교_생육결과데이터.xlsx.xlsx"
     file_path = find_file_safe(data_dir, filename)
 
     if file_path is None:
-        st.error("생육 결과 XLSX 파일을 찾을 수 없습니다.")
+        st.error("❌ 생육 결과 XLSX 파일을 찾을 수 없습니다.")
         return None
 
     xls = pd.ExcelFile(file_path, engine="openpyxl")
@@ -82,7 +89,7 @@ def load_growth_data():
 # ---------------------------
 # 데이터 로딩 실행
 # ---------------------------
-with st.spinner("데이터 로딩 중..."):
+with st.spinner("📊 데이터 로딩 중..."):
     env_data = load_environment_data()
     growth_data = load_growth_data()
 
@@ -123,57 +130,58 @@ tab1, tab2, tab3 = st.tabs([
 ])
 
 # ===========================
-# Tab 1
+# Tab 1. 연구 설계
 # ===========================
 with tab1:
-    st.subheader("연구 설계 개요")
+    st.subheader("연구 설계 및 비교 기준")
 
     st.markdown("""
-- 학교별로 **서로 다른 EC 농도**에서 동일한 극지식물 생육 실험 수행  
-- **환경 데이터(온도·습도·EC)** 와 **생육 데이터(생중량·잎 수 등)**를 통합 분석  
-- 단순 결과 비교가 아닌 **비교 조건의 공정성**을 먼저 검토  
+- 학교별 **서로 다른 EC 농도 조건**에서 동일한 극지식물 생육 실험 수행  
+- 환경 데이터(온도·습도·EC)와 생육 데이터(생중량, 잎 수 등)를 **통합 분석**  
+- 실험 결과 비교 전, **조건의 공정성과 실험 신뢰성**을 우선 검토  
     """)
 
     ec_df = pd.DataFrame({
-        "학교": list(ec_map.keys()),
-        "EC 조건": list(ec_map.values())
+        "학교": ec_map.keys(),
+        "EC 조건": ec_map.values()
     })
 
     st.table(ec_df)
 
 # ===========================
-# Tab 2
+# Tab 2. 환경 안정성
 # ===========================
 with tab2:
-    st.subheader("환경 조건의 안정성 분석 (표준편차)")
+    st.subheader("환경 조건 변동성 분석 (표준편차)")
 
     rows = []
     for school, df in env_data.items():
         rows.append({
             "학교": school,
-            "온도 표준편차": df["temperature"].std(),
-            "습도 표준편차": df["humidity"].std(),
-            "EC 표준편차": df["ec"].std()
+            "온도": df["temperature"].std(),
+            "습도": df["humidity"].std(),
+            "EC": df["ec"].std()
         })
 
     stability_df = pd.DataFrame(rows)
 
-    fig = make_subplots(rows=1, cols=3, subplot_titles=["온도", "습도", "EC"])
+    fig = make_subplots(
+        rows=1, cols=3,
+        subplot_titles=["온도 변동성", "습도 변동성", "EC 변동성"]
+    )
 
-    metrics = ["온도 표준편차", "습도 표준편차", "EC 표준편차"]
-    for i, metric in enumerate(metrics, start=1):
+    for i, col in enumerate(["온도", "습도", "EC"], start=1):
         fig.add_trace(
             go.Bar(
                 x=stability_df["학교"],
-                y=stability_df[metric],
-                name=metric
+                y=stability_df[col],
+                name=col
             ),
-            row=1,
-            col=i
+            row=1, col=i
         )
 
     fig.update_layout(
-        height=400,
+        height=420,
         showlegend=False,
         font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif")
     )
@@ -181,22 +189,22 @@ with tab2:
     st.plotly_chart(fig, use_container_width=True)
 
 # ===========================
-# Tab 3
+# Tab 3. EC 성능 평가
 # ===========================
 with tab3:
-    st.subheader("EC 대비 생육 효율 및 균일도 분석")
+    st.subheader("EC 대비 생육 효율 및 균일성 평가")
 
     rows = []
     for school, df in growth_data.items():
-        mean_weight = df["생중량(g)"].mean()
-        std_weight = df["생중량(g)"].std()
-        cv = std_weight / mean_weight if mean_weight != 0 else 0
+        mean_w = df["생중량(g)"].mean()
+        std_w = df["생중량(g)"].std()
+        cv = std_w / mean_w if mean_w != 0 else 0
 
         rows.append({
             "학교": school,
-            "EC": ec_map.get(school, None),
-            "평균 생중량": mean_weight,
-            "CV": cv
+            "EC": ec_map.get(school),
+            "평균 생중량(g)": mean_w,
+            "변동계수(CV)": cv
         })
 
     perf_df = pd.DataFrame(rows)
@@ -206,7 +214,7 @@ with tab3:
     fig.add_trace(
         go.Bar(
             x=perf_df["EC"],
-            y=perf_df["평균 생중량"],
+            y=perf_df["평균 생중량(g)"],
             name="평균 생중량"
         ),
         secondary_y=False
@@ -215,29 +223,29 @@ with tab3:
     fig.add_trace(
         go.Scatter(
             x=perf_df["EC"],
-            y=perf_df["CV"],
+            y=perf_df["변동계수(CV)"],
             mode="lines+markers",
-            name="변동계수(CV)"
+            name="균일성(CV)"
         ),
         secondary_y=True
     )
 
     fig.update_layout(
-        title="EC 증가에 따른 생육 성능 및 안정성",
+        title="EC 증가에 따른 생육 효율 및 안정성",
         font=dict(family="Malgun Gothic, Apple SD Gothic Neo, sans-serif")
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
-    st.success("✅ EC 2.0 (하늘고) 조건에서 생육 효율과 안정성이 가장 우수하게 나타남")
+    st.success("✅ EC 2.0 (하늘고) 조건에서 생육 효율과 균일성이 가장 우수함")
 
-    # 다운로드
+    # Excel 다운로드
     buffer = io.BytesIO()
     perf_df.to_excel(buffer, index=False, engine="openpyxl")
     buffer.seek(0)
 
     st.download_button(
-        label="📥 분석 결과 다운로드 (Excel)",
+        label="📥 EC 생육 분석 결과 다운로드",
         data=buffer,
         file_name="EC_생육분석결과.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
